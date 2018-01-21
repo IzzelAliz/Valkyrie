@@ -1,0 +1,4 @@
+main: com.ilummc.valkyrie.bukkit.ValkyrieBukkit
+name: Valkyrie
+version: 1.3
+author: IzzelAliz
