@@ -2,6 +2,8 @@
 
 Valkyrie 是一个用于 Bukkit 上的、配合客户端的反作弊插件。
 
+代码写的乱，请看管原谅，如果不介意可以 star 一下。
+
 [MCBBS 发布帖](http://www.mcbbs.net/thread-681010-1-1.html)
 
 ### 协议

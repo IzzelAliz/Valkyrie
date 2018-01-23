@@ -11,7 +11,8 @@ public class UpdatePacket {
     }
 
     public static class UpdateObject {
-        public String version, description, downloadUrl;
+        public String[] description;
+        public String version, downloadUrl;
         public long releaseDate = 0;
     }
 
