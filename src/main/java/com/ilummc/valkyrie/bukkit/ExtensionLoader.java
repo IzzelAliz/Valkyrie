@@ -8,6 +8,7 @@ import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLEncoder;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -15,9 +16,9 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import static com.ilummc.valkyrie.bukkit.ValkyrieBukkit.info;
 
-public class ExtensionLoader {
+class ExtensionLoader {
     // 自动更新检测线程池
-    public static final ScheduledExecutorService pool = Executors.newScheduledThreadPool(32);
+    static final ScheduledExecutorService pool = Executors.newScheduledThreadPool(32);
 
     private static URLClassLoader classLoader;
 
@@ -33,31 +34,21 @@ public class ExtensionLoader {
         if (!extensionFolder.exists()) extensionFolder.mkdir();
         else {
             ClassLoader prev = Thread.currentThread().getContextClassLoader();
+            Map<File, ExtensionDescription> extensions = new HashMap<>();
             List<URL> urls = new ArrayList<>();
-            Map<File, List<String>> classes = new HashMap<>();
             // 检测所有目录下的 .jar 文件
             for (File extension : Objects.requireNonNull(extensionFolder.listFiles(
                     file -> file.getName().endsWith(".jar") || file.getName().endsWith(".zip")))) {
                 try {
                     ZipFile zipFile = new ZipFile(extension);
-                    List<String> classNames = new ArrayList<>();
-                    // 存储所有 class 名称
-                    for (FileHeader fileHeader : ((List<FileHeader>) zipFile.getFileHeaders())) {
-                        if (fileHeader.getFileName().endsWith(".class")) {
-                            String className = fileHeader.getFileName();
-                            className = className.substring(0, className.length() - 6)
-                                    .replace('/', '.');
-                            classNames.add(className);
-                        }
-                    }
-                    // 判断此 jar 文件中是否含有 .class 文件
-                    if (classNames.isEmpty()) {
-                        info("§c文件 " + extension.getName() + " 不是一个有效的 Valkyrie 拓展!");
-                    } else {
-                        // 标记为拓展
-                        urls.add(new URL("file://" + URLEncoder.encode(extension.getAbsolutePath(), "utf-8")));
-                        classes.put(extension, classNames);
-                    }
+                    // 读取 ext.json
+                    FileHeader header = zipFile.getFileHeader("ext.json");
+                    ExtensionDescription description = Util.fromJson(Util.toString(zipFile.getInputStream(header),
+                            "utf-8"), ExtensionDescription.class);
+                    description.setFile(extension);
+                    extensions.put(extension, description);
+                    // 添加到类加载器的 URL List
+                    urls.add(new URL("file://" + URLEncoder.encode(extension.getAbsolutePath(), "utf-8")));
                 } catch (Exception e) {
                     info("§c文件 " + extension.getName() + " 读取失败或不是一个有效的 Valkyrie 拓展!");
                 }
@@ -66,36 +57,59 @@ public class ExtensionLoader {
             classLoader = new URLClassLoader(urls.toArray(new URL[urls.size()]), ValkyrieBukkit.class.getClassLoader());
             Thread.currentThread().setContextClassLoader(classLoader);
             // 加载所有拓展
-            classes.forEach(ExtensionLoader::loadSingleExtension);
+            extensions.forEach(ExtensionLoader::loadSingleExtension);
+            Thread.currentThread().setContextClassLoader(prev);
+            // 输出拓展更新信息
+            if (Config.enableExtensionUpdateCheck) {
+                info("§a拓展更新检测已启动，正在检测 ...");
+                for (int i = 0; i < futures.size(); i++) {
+                    try {
+                        String json = futures.get(i).get();
+                        UpdatePacket[] packet = Util.fromJson(json, UpdatePacket[].class);
+                        ExtensionDescription description = ValkyrieBukkit.extensions.get(i).getDescription();
+                        if (packet.length != 0 && !description.getVersion().equalsIgnoreCase(packet[0].version)) {
+                            info("§b拓展 " + description.getName() + " 有新的更新 ...");
+                            info("§b  版本：" + packet[0].version + " ，发布于 " +
+                                    new SimpleDateFormat("yyyy.MM.dd - HH:mm:ss")
+                                            .format(packet[0].releaseDate));
+                            if (packet[0].downloadUrl != null)
+                                info("§b  访问 " + packet[0].downloadUrl + " 下载 ...");
+                            else info("§c  没有提供下载地址 ...");
+                            info("§b  更新内容：" + (packet[0].description.length == 0 ? "暂无" : ""));
+                            for (String s : packet[0].description) {
+                                info("§b    " + s);
+                            }
+                        } else {
+                            info("§b拓展 " + description.getName() + " 没有更新 ...");
+                        }
+                    } catch (Exception e) {
+                        info("§c获取拓展 " + ValkyrieBukkit.extensions.get(i).getDescription().getName() + " 更新数据失败：" + e.toString());
+                    }
+                }
+            }
         }
     }
 
+
     @SuppressWarnings({"unchecked"})
-    private static void loadSingleExtension(File file, List<String> classes) {
-        boolean load = false;
-        for (String className : classes) {
-            try {
-                // 加载类并实例化
-                Class clazz = classLoader.loadClass(className);
-                Class<Extension> extensionClass = clazz.asSubclass(Extension.class);
-                Extension extension = extensionClass.newInstance();
-                // 初始化为 Bukkit 拓展
-                extension.initBukkit();
-                info("§a成功加载了 " + extension.getName() + " 拓展 ...");
-                // 检测拓展更新
-                if (!Config.enableExtensionUpdateCheck)
-                    if (Extension.UNDEFINED.equals(extension.getUpdateUrl()))
-                        info("§e拓展 " + extension.getName() + " 沒有提供自动更新地址 ...");
-                    else futures.add(pool.submit(() -> Util.get(extension.getUpdateUrl()).orElse("[]")));
-                ValkyrieBukkit.addExtension(extension);
-                load = true;
-                break;
-            } catch (Exception e) {
-                info("§c文件 " + file.getName() + " 读取失败或不是一个有效的 Valkyrie 拓展!");
-            }
-        }
-        if (!load) {
-            info("§c文件 " + file.getName() + " 不是一个有效的 Valkyrie 拓展：没有主类!");
+    private static void loadSingleExtension(File file, ExtensionDescription description) {
+        try {
+            // 加载类并实例化
+            Class clazz = classLoader.loadClass(description.getMain());
+            Class<Extension> extensionClass = clazz.asSubclass(Extension.class);
+            Extension extension = extensionClass.newInstance();
+            // 初始化为 Bukkit 拓展
+            extension.initBukkit();
+            info("§a成功加载了 " + description.getName() + " 拓展 ...");
+            // 检测拓展更新
+            if (!Config.enableExtensionUpdateCheck)
+                if (description.getUpdateUrl() == null)
+                    info("§e拓展 " + description.getName() + " 沒有提供自动更新地址 ...");
+                else futures.add(pool.submit(() -> Util.get(description.getUpdateUrl()).orElse("[]")));
+            extension.setDescription(description);
+            ValkyrieBukkit.addExtension(extension);
+        } catch (Exception e) {
+            info("§c文件 " + file.getName() + " 读取失败或不是一个有效的 Valkyrie 拓展!");
         }
     }
 }

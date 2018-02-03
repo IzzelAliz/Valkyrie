@@ -1,60 +1,72 @@
 package com.ilummc.valkyrie.bukkit;
 
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
+import java.io.IOException;
+
+/**
+ * How to code an extension
+ * <p>
+ * 1. Make your main class extends this class
+ * <p>
+ * 2. Create a ext.json in the root path of the jar file with things below:
+ * <ol>
+ * <li>main is the main class</li>
+ * <li>name is the name of the extension</li>
+ * <li>version is the version of the extension</li>
+ * <li>updateUrl is the update url of the extension</li>
+ * </ol>
+ * <p>
+ * UpdateUrl is an optional value, the format should be like as https://raw.githubusercontent.com/IzzelAliz/Valkyrie/1.3/version.json
+ */
 public abstract class Extension {
 
-    /**
-     * 未提供的默认字符串
-     */
-    public static final String UNDEFINED = "UNDEFINED";
+    private ExtensionDescription description;
 
     /**
-     * 初始化为 Forge 平台的拓展
+     * Initialize as Forge platform extension
      */
     public void initForge() {
 
     }
 
     /**
-     * 初始化为 Bukkit 平台的拓展
+     * Initialize as Bukkit platform extension
      */
     public void initBukkit() {
 
     }
 
     /**
-     * 启用自动更新后，将会对此 URL 进行 GET，返回类型应为 <code>application/js</code>，返回的 js 文本应为如下格式：
-     * <p>
-     * <code>
-     * [{
-     * "version": "1.0",
-     * "description": ["1. 更新了XXX", "2. 更新了xxx"],
-     * "downloadUrl": "http://下载.地址",
-     * "releaseDate": 1516528727988
-     * ]}
-     * </code>
-     * <p>
-     * 如果没有更新地址请留空。
-     * <p>
-     * 如果提供了 downloadUrl，且以 .jar 或 .zip 结尾，将会尝试进行 GET 操作，并自动替换原来的 .jar 文件
+     * Get the extension's description file ext.json
      *
-     * @return 用于请求的 URL
+     * @return description file
      */
-    public String getUpdateUrl() {
-        return UNDEFINED;
+    public final ExtensionDescription getDescription() {
+        return description;
+    }
+
+    protected final void setDescription(ExtensionDescription description) {
+        this.description = description;
     }
 
     /**
-     * @return 返回拓展的版本，如果未提供则不进行获取更新操作
+     * Get the default configuration file
+     *
+     * @return config file
      */
-    public String getVersion() {
-        return UNDEFINED;
-    }
-
-    /**
-     * @return 返回拓展名称，如果未提供则不加载
-     */
-    public String getName() {
-        return "UNNAMED";
+    public final File getDefaultConfig() {
+        File file = new File(JavaPlugin.getPlugin(ValkyrieBukkit.class).getDataFolder(),
+                "/config/" + getDescription().getName() + ".yml");
+        if (!file.exists()) {
+            try {
+                file.createNewFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return file;
     }
 
 }

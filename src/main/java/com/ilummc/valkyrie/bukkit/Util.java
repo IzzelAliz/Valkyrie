@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Optional;
@@ -19,6 +20,20 @@ public class Util {
 
     public static <T> T fromJson(String s, Class<T> clazz) {
         return gson.fromJson(s, clazz);
+    }
+
+    public static String toString(InputStream in, String charset) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        int length = -1;
+        byte[] buffer = new byte[1024];
+        try {
+            while ((length = in.read(buffer)) != -1)
+                stream.write(buffer, 0, length);
+            return new String(stream.toByteArray(), charset);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     public static Optional<String> get(String var1) {
